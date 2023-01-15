@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>yeet</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+    </head>
+    <body>
+        <h2>Go!</h2>
+        <form action="/api/golink" method="post">
+            <label>
+                From
+                <input name="source" type="text" value="{{.Current}}"/>
+            </label>
+            <label>
+                To
+                <input name="destination" type="text" placeholder="https://somewhere.cool"/>
+            </label>
+            <label>
+                Description
+                <textarea name="description" placeholder="What's cool about this link?"></textarea>
+            </label>
+            <button>Go!</button>
+        </form>
+        <ul>
+        {{range .Links}}
+            <li>{{.Source}} -> {{.Destination}} ({{.Total}} views)</li>
+        {{else}}
+            <li>no links</li>
+        {{end}}
+        </ul>
+    </body>
+</html>

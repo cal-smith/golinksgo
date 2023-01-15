@@ -1,0 +1,15 @@
+{
+    "manifest_version": 2,
+    "name": "Go!",
+    "version": "1.0",
+    "description": "Golinks!",
+    "icons": {},
+    "omnibox": { "keyword": "go" },
+    "permissions": ["webRequest", "webRequestBlocking", "<all_urls>"],
+    "background": {
+        "scripts": [
+            "go.js"
+        ]
+    },
+    "content_scripts": []
+}
