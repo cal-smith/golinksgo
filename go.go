@@ -129,6 +129,7 @@ func apiGoLinkHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err := queries.Createlink(ctx, links.CreatelinkParams{Source: source, Destination: destination, Description: description})
 	if err != nil {
+		log.Println("tried creating a link with:", source, destination, description)
 		panic(err)
 	}
 

@@ -20,7 +20,6 @@ create virtual table if not exists links_fts using fts5 (
     source,
     description,
     content = links,
-    content_rowid = source,
     tokenize = "porter"
 );
 
@@ -34,16 +33,14 @@ create trigger links_ai after insert on links begin
 insert into
     links_fts (rowid, source, description)
 values
-    (new.source, new.source, new.description);
-
+    (new.rowid, new.source, new.description);
 end;
 
 create trigger links_ad after delete on links begin
 insert into
     links_fts (links_fts, rowid, source, description)
 values
-    ('delete', old.source, old.source, old.description);
-
+    ('delete', old.rowid, old.source, old.description);
 end;
 
 create trigger links_au after
@@ -51,11 +48,10 @@ update on links begin
 insert into
     links_fts (links_fts, rowid, source, description)
 values
-    ('delete', old.source, old.source, old.description);
+    ('delete', old.rowid, old.source, old.description);
 
 insert into
     links_fts (rowid, source, description)
 values
-    (new.source, new.source, new.description);
-
+    (new.rowid, new.source, new.description);
 end;
