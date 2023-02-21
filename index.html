@@ -19,48 +19,60 @@
                 <li class="list-group-item d-flex go-link-item">
                     <span class="flex-fill">{{.Source}} <i class="bi bi-arrow-right"></i> {{.Destination}} ({{.Total}} views)</span>
                     <go-link-edit class="me-2" link-id="{{.Source}}" source="{{.Source}}" destination="{{.Destination}}" description="{{.Description.String}}"></go-link-edit>
-                    <form action="/api/golink{{.Source}}" data-method="delete">
+                    <go-form action="/api/golink{{.Source}}" method="delete">
                         <button class="btn btn-sm btn-outline-danger">
                             <i class="bi bi-trash3"></i>
                         </button>
-                    </form>
+                    </go-form>
                 </li>
             {{else}}
                 <li class="list-group-item">no links</li>
             {{end}}
             </ul>
         </main>
+        <template id="go-form-template">
+            <form>
+                <slot></slot>
+            </form>
+        </template>
         <template id="go-link-form-template">
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">    
-            <form action="/api/golink" method="post">
-                <div class="row mb-3">
-                    <div class="col d-flex align-items-center">
-                        <div class="form-floating flex-fill">
-                            <input name="source" type="text" class="form-control" placeholder="/something"/>
-                            <label>From</label>
-                        </div>
-                        <i class="bi bi-arrow-right ms-4"></i>
-                    </div>
-                    <div class="col">
-                        <div class="form-floating">
-                            <input name="destination" type="text" placeholder="https://somewhere.cool" class="form-control"/>
-                            <label>To</label>
-                        </div>
-                    </div>
-                    <div class="col-2 d-flex align-items-center">
-                        <button class="btn btn-primary col-2 flex-fill">Go!</button>
-                    </div>
-                </div>
+            <go-form action="/api/golink" method="post">
                 <div class="row">
-                    <div class="col-6">
-                        <div class="form-floating col">
-                            <textarea name="description" placeholder="What's cool about this link?" class="form-control"></textarea>
-                            <label>Description</label>
+                    <div class="col">
+                        <div class="row mb-3">
+                            <div class="col d-flex align-items-center">
+                                <div class="form-floating flex-fill">
+                                    <input name="source" type="text" class="form-control" placeholder="/something"/>
+                                    <label>From</label>
+                                </div>
+                                <i class="bi bi-arrow-right ms-4 d-none d-sm-block"></i>
+                            </div>
+                            <div class="col">
+                                <div class="form-floating">
+                                    <input name="destination" type="text" placeholder="https://somewhere.cool" class="form-control"/>
+                                    <label>To</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col">
+                                <div class="form-floating col">
+                                    <textarea name="description" placeholder="What's cool about this link?" class="form-control"></textarea>
+                                    <label>Description</label>
+                                </div>
+                            </div>
+                            <div class="col d-flex align-items-center d-block d-sm-none">
+                                <button class="btn btn-primary">Go!</button>
+                            </div>
                         </div>
                     </div>
+                    <div class="col-2 d-flex align-items-center d-none d-sm-block">
+                        <button class="btn btn-primary">Go!</button>
+                    </div>
                 </div>
-            </form>
+            </go-form>
         </template>
         <template id="go-link-edit-template">
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
@@ -120,6 +132,52 @@
             };
             adaptForms();
 
+            class GoForm extends HTMLElement {
+                static get observedAttributes() {
+                    return ["action", "method"];
+                }
+
+                constructor() {
+                    super();
+                    this.attachShadow({mode: "open"});
+                    const template = document.querySelector("#go-form-template");
+                    this.shadowRoot.append(template.content.cloneNode(true));
+                }
+
+                set action(value) {
+                    this.shadowRoot.querySelector("form").action = this.getAttribute("action");   
+                }
+
+                get action() {
+                    this.shadowRoot.querySelector("form").action;
+                }
+
+                set method(value) {
+                    if (["delete", "put"].includes(value?.toLowerCase())) {
+                        const form = this.shadowRoot.querySelector("form");
+                        form.setAttribute("data-method", value);
+                        form.removeAttribute("method");
+                        adaptForms(this.shadowRoot);
+                    } else {
+                        this.shadowRoot.querySelector("form").method = value ?? post;
+                    }
+                }
+
+                get method() {
+                    return this.shadowRoot.querySelector("form").method;
+                }
+
+                connectedCallback() {
+                    this.action = this.getAttribute("action");
+                    this.method = this.getAttribute("method");
+                }
+
+                attributeChangedCallback(name, oldValue, newValue) {
+                    this[name] = newValue;
+                }
+            }
+            customElements.define("go-form", GoForm);
+
             class GoLinkForm extends HTMLElement {
                 static get observedAttributes() {
                     return ["source", "destination", "description", "action", "method"];
@@ -160,26 +218,19 @@
                 }
 
                 set action(value) {
-                    this.shadowRoot.querySelector("form").action = this.getAttribute("action");   
+                    this.shadowRoot.querySelector("go-form").action = this.getAttribute("action");   
                 }
 
                 get action() {
-                    this.shadowRoot.querySelector("form").action;
+                    this.shadowRoot.querySelector("go-form").action;
                 }
 
                 set method(value) {
-                    if (["delete", "put"].includes(value?.toLowerCase())) {
-                        const form = this.shadowRoot.querySelector("form");
-                        form.setAttribute("data-method", value);
-                        form.removeAttribute("method");
-                        adaptForms(this.shadowRoot);
-                    } else {
-                        this.shadowRoot.querySelector("form").method = value;
-                    }
+                    this.shadowRoot.querySelector("go-form").method = value;
                 }
 
                 get method() {
-                    return this.shadowRoot.querySelector("form").method;
+                    return this.shadowRoot.querySelector("go-form").method;
                 }
 
                 connectedCallback() {
