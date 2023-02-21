@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/cal-smith/golinks/links"
+	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -43,7 +44,7 @@ func goHandler(w http.ResponseWriter, r *http.Request) {
 	path := html.EscapeString(r.URL.Path)
 	path = strings.ReplaceAll(strings.ToLower(path), "-", "")
 
-	log.Println(path, r.RemoteAddr, r.UserAgent())
+	log.Println(path, r.RemoteAddr, r.UserAgent(), r.Method)
 
 	ctx := context.Background()
 	queries := GetDb(ctx)
@@ -59,7 +60,7 @@ func goHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, match.Destination, http.StatusFound)
 		return
 	} else {
-		matches, err := queries.FuzzyMatch(ctx, links.FuzzyMatchParams{Column1: path, Column2: path})
+		matches, err := queries.FuzzyMatch(ctx, links.FuzzyMatchParams{Source: path, Column2: path})
 		if err == nil {
 			for _, match := range matches {
 				log.Println("matching", path, match.Source)
@@ -90,6 +91,12 @@ func goHandler(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
+	for i, link := range link_list {
+		if link.Source[0] != '/' {
+			link_list[i].Source = "/" + link.Source
+		}
+	}
+
 	index, err := template.ParseFiles("index.html")
 	if err != nil {
 		panic(err)
@@ -103,19 +110,48 @@ func goHandler(w http.ResponseWriter, r *http.Request) {
 		Links:   link_list,
 	}
 
+	if path == "/" {
+		data.Current = ""
+	}
+
 	err = index.Execute(w, data)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func apiGoLinkHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println(r.URL.Path, r.RemoteAddr, r.UserAgent())
-
+func apiDeleteGoLinkHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println(r.URL.Path, r.RemoteAddr, r.UserAgent(), r.Method)
+	params := httprouter.ParamsFromContext(r.Context())
 	ctx := context.Background()
 	queries := GetDb(ctx)
 
+	link := "/" + params.ByName("link")
+
+	err := queries.DeleteLink(ctx, link)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error deleting link %s", link), http.StatusInternalServerError)
+		panic(err)
+	}
+
+	err = queries.DeleteView(ctx, link)
+	if err != nil {
+		log.Println("error cleaning up link views for: ", link)
+		log.Println(err)
+	}
+
+	w.Header().Add("Redirect", "/")
+	w.Write([]byte("ok"))
+}
+
+var ErrEmptyLink = errors.New("no source or destination")
+
+func verifyCreateOrUpdateLink(r *http.Request) (links.CreatelinkParams, error) {
 	source := r.PostFormValue("source")
+	if source[0] != '/' {
+		source = "/" + source
+	}
+
 	destination := r.PostFormValue("destination")
 	description := sql.NullString{
 		String: r.PostFormValue("description"),
@@ -123,13 +159,65 @@ func apiGoLinkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.TrimSpace(source) == "" || strings.TrimSpace(destination) == "" {
+		return links.CreatelinkParams{}, ErrEmptyLink
+	}
+
+	return links.CreatelinkParams{
+		Source:      source,
+		Destination: destination,
+		Description: description,
+	}, nil
+}
+
+func apiPutGoLinkHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println(r.URL.Path, r.RemoteAddr, r.UserAgent(), r.Method)
+	params := httprouter.ParamsFromContext((r.Context()))
+	ctx := context.Background()
+	queries := GetDb(ctx)
+
+	updateParams, err := verifyCreateOrUpdateLink(r)
+
+	if err == ErrEmptyLink {
 		http.Error(w, "Invalid golink: no source or destination", http.StatusBadRequest)
 		return
 	}
 
-	_, err := queries.Createlink(ctx, links.CreatelinkParams{Source: source, Destination: destination, Description: description})
+	newLink, err := queries.UpdateLink(ctx, links.UpdateLinkParams{
+		Source:      updateParams.Source,
+		Destination: updateParams.Destination,
+		Description: updateParams.Description,
+		Source_2:    "/" + params.ByName("link"),
+	})
 	if err != nil {
-		log.Println("tried creating a link with:", source, destination, description)
+		panic(err)
+	}
+
+	jsonLink, err := json.Marshal(newLink)
+	if err != nil {
+		panic(err)
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	w.Header().Add("Redirect", "/")
+	w.Write(jsonLink)
+}
+
+func apiGoLinkHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println(r.URL.Path, r.RemoteAddr, r.UserAgent(), r.Method)
+
+	ctx := context.Background()
+	queries := GetDb(ctx)
+
+	params, err := verifyCreateOrUpdateLink(r)
+
+	if err == ErrEmptyLink {
+		http.Error(w, "Invalid golink: no source or destination", http.StatusBadRequest)
+		return
+	}
+
+	_, err = queries.Createlink(ctx, params)
+	if err != nil {
+		log.Println("tried creating a link with:", params.Source, params.Destination, params.Description)
 		panic(err)
 	}
 
@@ -198,28 +286,40 @@ func main() {
 		},
 	)
 
-	http.Handle("/", Adapt(
+	router := httprouter.New()
+
+	router.NotFound = Adapt(
 		http.HandlerFunc(goHandler),
 		RequestMetrics(requestTimer, requestCounter),
-		CanonicalLogLine(logger, "GO")))
+		CanonicalLogLine(logger, "GO"))
 
-	http.Handle("/api/golink", Adapt(
+	router.Handler(http.MethodPost, "/api/golink", Adapt(
 		http.HandlerFunc(apiGoLinkHandler),
 		RequestMetrics(requestTimer, requestCounter),
 		CanonicalLogLine(logger, "API")))
 
-	http.Handle("/api/top", Adapt(
+	router.Handler(http.MethodDelete, "/api/golink/:link", Adapt(
+		http.HandlerFunc(apiDeleteGoLinkHandler),
+		RequestMetrics(requestTimer, requestCounter),
+		CanonicalLogLine(logger, "API")))
+
+	router.Handler(http.MethodPut, "/api/golink/:link", Adapt(
+		http.HandlerFunc(apiPutGoLinkHandler),
+		RequestMetrics(requestTimer, requestCounter),
+		CanonicalLogLine(logger, "API")))
+
+	router.Handler(http.MethodGet, "/api/top", Adapt(
 		http.HandlerFunc(listTop),
 		RequestMetrics(requestTimer, requestCounter),
 		CanonicalLogLine(logger, "API")))
 
-	http.Handle("/api/search", Adapt(
+	router.Handler(http.MethodGet, "/api/search", Adapt(
 		http.HandlerFunc(listSearch),
 		RequestMetrics(requestTimer, requestCounter),
 		CanonicalLogLine(logger, "API")))
 
 	// Expose /metrics HTTP endpoint
-	http.Handle("/metrics", promhttp.Handler())
+	router.Handler(http.MethodGet, "/metrics", promhttp.Handler())
 
-	log.Fatal(http.ListenAndServe(":8000", nil))
+	log.Fatal(http.ListenAndServe(":8000", router))
 }
