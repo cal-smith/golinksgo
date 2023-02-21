@@ -54,6 +54,23 @@ insert into
 values
     (?, ?, ?) returning *;
 
+-- name: DeleteLink :exec
+delete from 
+    links
+where 
+    source = ?;
+
+-- name: UpdateLink :one
+update
+    links
+set
+    source = ?,
+    destination = ?,
+    description = ?
+where
+    source = ?
+returning *;
+
 -- name: ExactMatch :one
 select
     *
@@ -64,15 +81,22 @@ where
 
 -- name: FuzzyMatch :many
 select
-    *
+    source,
+    destination
 from
     links
 where
-    ? like '%' || replace (links.source, '%s', '%') || '%'
-    and not source = ?;
+    @source like '%' || replace (links.source, '%s', '%') || '%'
+    and not source = @source;
 
 -- name: CreatePageView :one
 insert into
     views (path, ip)
 values
     (?, ?) returning *;
+
+-- name: DeleteView :exec
+delete from
+    views
+where
+    path = ?;
