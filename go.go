@@ -43,6 +43,9 @@ func GetDb(ctx context.Context) *links.Queries {
 func goHandler(w http.ResponseWriter, r *http.Request) {
 	path := html.EscapeString(r.URL.Path)
 	path = strings.ReplaceAll(strings.ToLower(path), "-", "")
+	if path != "/" {
+		path = strings.TrimRight(path, "/")
+	}
 
 	log.Println(path, r.RemoteAddr, r.UserAgent(), r.Method)
 
