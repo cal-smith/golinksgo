@@ -19,11 +19,11 @@
                 <li class="list-group-item d-flex go-link-item">
                     <span class="flex-fill">{{.Source}} <i class="bi bi-arrow-right"></i> {{.Destination}} ({{.Total}} views)</span>
                     <go-link-edit class="me-2" link-id="{{.Source}}" source="{{.Source}}" destination="{{.Destination}}" description="{{.Description.String}}"></go-link-edit>
-                    <go-form action="/api/golink{{.Source}}" method="delete">
+                    <form is="go-form" action="/api/golink{{.Source}}" method="delete">
                         <button class="btn btn-sm btn-outline-danger">
                             <i class="bi bi-trash3"></i>
                         </button>
-                    </go-form>
+                    </form>
                 </li>
             {{else}}
                 <li class="list-group-item">no links</li>
@@ -31,14 +31,12 @@
             </ul>
         </main>
         <template id="go-form-template">
-            <form>
-                <slot></slot>
-            </form>
+            <slot></slot>
         </template>
         <template id="go-link-form-template">
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">    
-            <go-form action="/api/golink" method="post">
+            <form is="go-form" action="/api/golink" method="post">
                 <div class="row">
                     <div class="col">
                         <div class="row mb-3">
@@ -72,7 +70,7 @@
                         <button class="btn btn-primary">Go!</button>
                     </div>
                 </div>
-            </go-form>
+            </form>
         </template>
         <template id="go-link-edit-template">
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
@@ -98,7 +96,11 @@
         <script>
             const adaptedForms = new WeakSet();
             const adaptForms = (elementRoot = document) => {
-                elementRoot.querySelectorAll("form[data-method]").forEach(form => {
+                let nodes = [...elementRoot.querySelectorAll("form[data-method]")];
+                if (elementRoot.tagName === "FORM") {
+                    nodes.push(elementRoot);
+                }
+                nodes.forEach(form => {
                     if (!["delete", "put"].includes(form.dataset?.method?.toLowerCase())) {
                         console.error(`cannot adapt method: ${form.dataset?.method}`);
                         return;
@@ -132,43 +134,24 @@
             };
             adaptForms();
 
-            class GoForm extends HTMLElement {
+            class GoForm extends HTMLFormElement {
                 static get observedAttributes() {
-                    return ["action", "method"];
-                }
-
-                constructor() {
-                    super();
-                    this.attachShadow({mode: "open"});
-                    const template = document.querySelector("#go-form-template");
-                    this.shadowRoot.append(template.content.cloneNode(true));
-                }
-
-                set action(value) {
-                    this.shadowRoot.querySelector("form").action = this.getAttribute("action");   
-                }
-
-                get action() {
-                    this.shadowRoot.querySelector("form").action;
+                    return ["method"];
                 }
 
                 set method(value) {
                     if (["delete", "put"].includes(value?.toLowerCase())) {
-                        const form = this.shadowRoot.querySelector("form");
-                        form.setAttribute("data-method", value);
-                        form.removeAttribute("method");
-                        adaptForms(this.shadowRoot);
-                    } else {
-                        this.shadowRoot.querySelector("form").method = value ?? post;
+                        this.setAttribute("data-method", value);
+                        this.removeAttribute("method");
+                        adaptForms(this);
                     }
                 }
 
                 get method() {
-                    return this.shadowRoot.querySelector("form").method;
+                    return this.getAttribute("method") ?? this.getAttribute("data-method");
                 }
 
                 connectedCallback() {
-                    this.action = this.getAttribute("action");
                     this.method = this.getAttribute("method");
                 }
 
@@ -176,7 +159,7 @@
                     this[name] = newValue;
                 }
             }
-            customElements.define("go-form", GoForm);
+            customElements.define("go-form", GoForm, { extends: 'form' });
 
             class GoLinkForm extends HTMLElement {
                 static get observedAttributes() {
@@ -218,19 +201,19 @@
                 }
 
                 set action(value) {
-                    this.shadowRoot.querySelector("go-form").action = this.getAttribute("action");   
+                    this.shadowRoot.querySelector("[is='go-form']").action = this.getAttribute("action");   
                 }
 
                 get action() {
-                    this.shadowRoot.querySelector("go-form").action;
+                    this.shadowRoot.querySelector("[is='go-form']").action;
                 }
 
                 set method(value) {
-                    this.shadowRoot.querySelector("go-form").method = value;
+                    this.shadowRoot.querySelector("[is='go-form']").method = value;
                 }
 
                 get method() {
-                    return this.shadowRoot.querySelector("go-form").method;
+                    return this.shadowRoot.querySelector("[is='go-form']").method;
                 }
 
                 connectedCallback() {
